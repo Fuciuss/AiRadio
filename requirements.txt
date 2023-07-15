@@ -1,0 +1,4 @@
+pydub
+flask
+torch>=2.0
+pip install -U audiocraft

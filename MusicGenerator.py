@@ -129,7 +129,7 @@ class MusicGenerator:
 
 
 
-    def generate_continuation(self, previous_section, continuation_prompts, continuation_length=5):
+    def generate_continuation(self, previous_section, continuation_prompts, overlap=5):
 
         last_moment = previous_section[:, :, -overlap*self.model.sample_rate:]
 
@@ -239,6 +239,7 @@ class MusicGenerator:
 
 
     def create_continuation_loop(self):
+        pass
 
 
 
