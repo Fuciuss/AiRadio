@@ -12,6 +12,11 @@ import time
 from functools import wraps
 
 
+import pickle
+
+
+
+
 def timer(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -107,30 +112,32 @@ class MusicGenerator:
 
         return first_section
 
+            
+    def write_multiple_clips(self, clips, prompts, location, config):
         
-    def write_multiple_clips(self, clips, prompts, location):
-
         file_locations = []
 
         for i in range(clips.shape[0]):
+            
+            # Create the config_string from your config dict
+            config_string = "_".join([f"{k}_{v}" for k, v in config.items()])
 
-            file_name = prompts[i].replace(" ", "_") + f"_{i}.wav"
+            # Add the config_string to the file_name
+            file_name = prompts[i].replace(" ", "_") + f"_{i}_{config_string}.wav"
 
             clip = clips.detach().cpu().float()[i]
 
             full_location = os.path.join(location, file_name)
             with open(full_location, 'wb') as file:
-                # audio_write(
-                #     file.name, clip, self.model.sample_rate, strategy="loudness",
-                #     loudness_headroom_db=16, loudness_compressor=True, add_suffix=False)
                 audio_write(
                     file.name, clip, self.model.sample_rate, strategy="loudness",
                     loudness_headroom_db=16, add_suffix=False)
                 print(f'Saved to {file.name}')
 
             file_locations.append(full_location)
-    
+        
         return file_locations
+
 
 
 
@@ -250,7 +257,7 @@ class MusicGenerator:
 
     def send_files_to_queue(self, files_to_upload):
             
-            payload = [{"track_name": os.path.basename(file)[:10], "track_location": file} for file in files_to_upload]
+            payload = [{"track_name": os.path.basename(file)[:120], "track_location": file} for file in files_to_upload]
             
             r = requests.post(self.queue_url, json=payload)
             print(f"Sent {len(files_to_upload)} files to queue at {self.queue_url} with status code: {r.status_code}")
@@ -258,12 +265,17 @@ class MusicGenerator:
 
     def one_continuation(self):
 
+        config = {
+            "use_sampling":True,
+            "top_k":150,
+            "top_p":0.3,
+            "duration":30,
+            "cfg_coef":3
+        }
+
 
         self.model.set_generation_params(
-            use_sampling=True,
-            top_k=250,
-            duration=30,
-            cfg_coef=5
+            **config
         )
 
         n_prompts = 9
@@ -288,7 +300,9 @@ class MusicGenerator:
 
         print(f"took {elapsed_time} seconds to generate {n_prompts} prompts of {duration} seconds each")
         
-        file_locations = self.write_multiple_clips(full_continuation_tracks, prompts, self.output_folder)
+        file_locations = self.write_multiple_clips(full_continuation_tracks, prompts, self.output_folder, config)
+
+        self.send_files_to_queue(file_locations)
 
 
 
