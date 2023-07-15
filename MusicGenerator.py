@@ -5,7 +5,8 @@ import os
 import random
 from audiocraft.data.audio import audio_write
 import torch
-import boto3
+# import boto3
+import requests
 
 import time
 from functools import wraps
@@ -24,7 +25,7 @@ def timer(func):
 class MusicGenerator:
 
 
-    def __init__(self, output_folder, model_size, track_count, duration):
+    def __init__(self, output_folder, model_size, track_count, duration, queue_url):
         self.output_folder = output_folder
         self.model = MusicGen.get_pretrained(model_size)
         self.set_generation_params(duration=duration)
@@ -32,6 +33,7 @@ class MusicGenerator:
 
         self.playlist = torch.Tensor([])
         self.track_count = track_count
+        self.queue_url = queue_url
 
 
     
@@ -44,7 +46,7 @@ class MusicGenerator:
         )
 
 
-    def select_random_prompts(self):
+    def select_random_prompts(self, count):
         prompts = [
             'Smooth jazz fusion, laidback saxophone, ambient, sultry piano, dynamic bassline',
             'Edgy punk, distorted guitar, high-energy, booming drums, raw vocals',
@@ -88,7 +90,7 @@ class MusicGenerator:
             'Energetic drum n bass, pulsating synth, high-energy, fast-paced drums, dynamic bassline'
         ]
 
-        return random.sample(prompts, self.track_count)
+        return random.sample(prompts, count)
 
     @timer
     def generate_first_section(self):
@@ -118,9 +120,12 @@ class MusicGenerator:
 
             full_location = os.path.join(location, file_name)
             with open(full_location, 'wb') as file:
+                # audio_write(
+                #     file.name, clip, self.model.sample_rate, strategy="loudness",
+                #     loudness_headroom_db=16, loudness_compressor=True, add_suffix=False)
                 audio_write(
                     file.name, clip, self.model.sample_rate, strategy="loudness",
-                    loudness_headroom_db=16, loudness_compressor=True, add_suffix=False)
+                    loudness_headroom_db=16, add_suffix=False)
                 print(f'Saved to {file.name}')
 
             file_locations.append(full_location)
@@ -243,27 +248,76 @@ class MusicGenerator:
 
 
 
+    def send_files_to_queue(self, files_to_upload):
+            
+            payload = [{"track_name": os.path.basename(file)[:10], "track_location": file} for file in files_to_upload]
+            
+            r = requests.post(self.queue_url, json=payload)
+            print(f"Sent {len(files_to_upload)} files to queue at {self.queue_url} with status code: {r.status_code}")
+            
+
+    def one_continuation(self):
+
+
+        self.model.set_generation_params(
+            use_sampling=True,
+            top_k=250,
+            duration=30,
+            cfg_coef=5
+        )
+
+        n_prompts = 9
+        prompts = self.select_random_prompts(9)
+
+        print(f"Generating {n_prompts} prompts of 30 seconds each")
+
+        start_time = time.time()
+
+        generated = self.model.generate(prompts, progress=True)
+
+        overlap=5
+        last_moment = generated[:, :, -overlap*self.model.sample_rate:]
+
+        continuation_section = self.model.generate_continuation(last_moment, self.model.sample_rate, descriptions=prompts, progress=True)
+
+        full_continuation_tracks = torch.cat([generated[:, :, :-overlap*self.model.sample_rate], continuation_section], 2)
+
+
+        elapsed_time = time.time() - start_time
+
+
+        print(f"took {elapsed_time} seconds to generate {n_prompts} prompts of {duration} seconds each")
+        
+        file_locations = self.write_multiple_clips(full_continuation_tracks, prompts, self.output_folder)
+
+
+
+
+
 
 
 if __name__ == "__main__":
 
-    model_size = "medium"
+    model_size = "large"
 
     # Simple timestamp
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    output_folder = f"/home/audiocraft/output_folder/{timestamp}"
+    # output_folder = f"/home/audiocraft/output_folder/{timestamp}"
+    output_folder = f"/home/ubuntu/AiRadio/scratch_output/{timestamp}"
     track_count=5
-    duration=60
+    duration=30
 
     os.makedirs(output_folder)
 
-    generator = MusicGenerator(output_folder, model_size, track_count, duration=duration)
+    queue_url = 'http://127.0.0.1:5000/queuesongs'
+
+    generator = MusicGenerator(output_folder, model_size, track_count, duration=duration, queue_url=queue_url)
 
     # generator.generate_one_continuation()
 
     # start_time = time.time()
     
-    first = generator.generate_first_section()
-
+    # first = generator.generate_first_section()
+    generator.one_continuation()
     # elapsed_time = time.time() - start_time
     # print(f"First section took {elapsed_time} seconds")
