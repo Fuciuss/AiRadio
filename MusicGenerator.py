@@ -112,6 +112,33 @@ class MusicGenerator:
 
         return first_section
 
+
+    from pedalboard import Pedalboard, HighpassFilter, LowpassFilter
+    from pedalboard.io import AudioFile
+
+
+
+    def pedalboard(self, file_locations):
+
+        board = Pedalboard([HighPassFilter(), LowPassFilter()])
+
+        for file in file_locations:
+            
+            with AudioFile(file) as f:
+                audio = f.read(f.frames)
+
+
+            with AudioFile(file, 'w', effected.shape[0]) as f:
+                    f.write(effected)
+
+
+
+
+
+
+
+
+
             
     def write_multiple_clips(self, clips, prompts, location, config):
         
@@ -133,6 +160,8 @@ class MusicGenerator:
                     file.name, clip, self.model.sample_rate, strategy="loudness",
                     loudness_headroom_db=16, add_suffix=False)
                 print(f'Saved to {file.name}')
+
+
 
             file_locations.append(full_location)
         
@@ -257,7 +286,7 @@ class MusicGenerator:
 
     def send_files_to_queue(self, files_to_upload):
             
-            payload = [{"track_name": os.path.basename(file)[:120], "track_location": file} for file in files_to_upload]
+            payload = [{"track_name": os.path.basename(file)[:160], "track_location": file} for file in files_to_upload]
             
             r = requests.post(self.queue_url, json=payload)
             print(f"Sent {len(files_to_upload)} files to queue at {self.queue_url} with status code: {r.status_code}")
@@ -268,9 +297,11 @@ class MusicGenerator:
         config = {
             "use_sampling":True,
             "top_k":150,
-            "top_p":0.3,
+            "top_p":0.9,
             "duration":30,
-            "cfg_coef":3
+            "cfg_coef":1.5,
+            "temperature": 1.5
+            
         }
 
 
@@ -289,6 +320,18 @@ class MusicGenerator:
 
         overlap=5
         last_moment = generated[:, :, -overlap*self.model.sample_rate:]
+
+
+        config = {
+            "use_sampling":True,
+            "top_k":200,
+            "duration":30,
+            "cfg_coef":1.5,
+            "temperature": 1.5
+        }
+        self.model.set_generation_params(
+            **config
+        )
 
         continuation_section = self.model.generate_continuation(last_moment, self.model.sample_rate, descriptions=prompts, progress=True)
 

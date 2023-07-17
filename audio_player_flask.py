@@ -86,13 +86,14 @@ def queue_songs():
         print(f"Queued song: {track['track_name']}")
 
     save_queue()
+    play_songs()
 
     return request.json
 
 def play_songs():
     global CURRENT_TRACK
 
-    queue_songs
+
     while True:
         if not song_queue.empty():
             audio_file_item = song_queue.get()  # Get an audio file item from the queue
@@ -102,7 +103,7 @@ def play_songs():
 
             # Apply fade in and fade out
             audio_segment = audio_segment.fade_in(2000).fade_out(2000)
-
+            global CURRENT_TRACK
             CURRENT_TRACK = audio_file_item.track_name
 
             # pydub.playback.play is used to play the audio_segment
